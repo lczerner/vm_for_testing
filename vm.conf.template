@@ -1,0 +1,22 @@
+# Configuration file for the vm.sh script This file is sourced at the start of
+# the vm.sh script and contains mandatory environment variables needed for the
+# script to work as well as some optional variables.
+
+# Mandatory environment variables
+
+# Public ssh key to be injected to the quest
+SSH_PUBKEY=
+
+# Existing lvm volume group that also contains the THIN_POOL specified below.
+# To be used to create thin lvs for the VMs.
+LVM_VG=
+
+# Existing lvm thin pool logical volume created in the LVM_VG specified above.
+# To be used to create thin lvs for the VMs.
+THIN_POOL=
+
+# Optional environament variables
+
+# Directory to store test results. By default this is going to be create in the
+# same directory where vm.sh script resides
+# RESULTS_DIR=
