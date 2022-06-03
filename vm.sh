@@ -13,6 +13,8 @@ INIT_SCRIPT="$SCRIPTS_DIR/init.sh"
 
 SUPPORTED_TESTS="xfstests e2fsprogs"
 
+VM_LV_SIZE=100G
+
 VM_IP=
 VM_ONLINE=
 LV_CREATED=
@@ -335,7 +337,7 @@ new_vm() {
 	dev="/dev/mapper/lvm_pool-$devname"
 	if [ ! -b "$dev" ]; then
 		echo "[+] Creating new system device $devname"
-		sudo lvcreate -n $devname -V 100G --thinpool thin_pool lvm_pool || error "lvcreate failed"
+		sudo lvcreate -n $devname -V $VM_LV_SIZE --thinpool thin_pool lvm_pool || error "lvcreate failed"
 		LV_CREATED="$LV_CREATED $devname"
 	else
 		echo "[+] Cleaning the device"

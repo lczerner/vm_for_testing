@@ -1,6 +1,9 @@
 # Configuration file for the vm.sh script This file is sourced at the start of
 # the vm.sh script and contains mandatory environment variables needed for the
 # script to work as well as some optional variables.
+#
+# The configuration file must be named vm.conf and must be stored in the same
+# directory as the vm.sh script
 
 # Mandatory environment variables
 
