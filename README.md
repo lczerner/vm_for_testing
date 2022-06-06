@@ -14,7 +14,7 @@ the future.
 ## What do you need?
 
 You have to have the following tools available: `lvm` `virsh` `virt-builder`
-`ssh`
+`ssh` `wget`
 
 The script utilizes lvm thin provisioning so you have to have lvm `volume
 group` and lvm `thin-pool` already set up with some free space available.

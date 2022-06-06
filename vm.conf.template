@@ -18,6 +18,9 @@ LVM_VG=
 # To be used to create thin lvs for the VMs.
 THIN_POOL=
 
+# Username to use with RH services such as brew
+RH_USERNAME=
+
 # Optional environament variables
 
 # Directory to store test results. By default this is going to be create in the

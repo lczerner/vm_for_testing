@@ -68,6 +68,7 @@ check_requirements() {
 	require_tool virt-builder
 	require_tool ssh
 	require_tool scp
+	require_tool wget
 
 	# Does LVM_VG exist?
 	sudo vgs --noheadings -o vg_name | grep -w $LVM_VG >/dev/null 2>&1|| \
@@ -209,10 +210,10 @@ run_script_in_vm() {
 	shift 2
 
 	if [ -n "$script" ]; then
-		echo "[+] Running the script \"$script $@\""
+		echo "[+] Running script \"$script $@\""
 		ssh root@$VM_IP '/bin/bash -s' < $script - $@
 	elif [ -n "$command" ]; then
-		echo "[+] Running the command \"$command\""
+		echo "[+] Running command \"$command\""
 		ssh root@$VM_IP "$command"
 	fi
 
@@ -418,9 +419,72 @@ test_e2fsprogs() {
 
 }
 
+get_scratch_kernel() {
+	brewid=$1
+	search="kernel-core-"
+	url="https://download.eng.bos.redhat.com/brewroot/scratch/${RH_USERNAME}/task_$brewid"
+	kernel=$(wget -q $url -O - | grep $search | grep x86_64 | sed -e 's/.*<a href="\(.*\)".*/\1/g')
+	ver=${kernel#kernel-core-}
+
+	files="$url/kernel-core-$ver $url/kernel-$ver $url/kernel-modules-$ver"
+	echo $files
+}
+
+copy_to_vm() {
+	[ $# -lt 3 ] && error "Not enough arguments"
+	VM=$1
+	REMOTE_DIR="${@: -1}"
+
+	# Magical formula, do not disturb!
+	# It removes the last argument from the $@
+	set -- "${@:1:$(($#-1))}"
+
+	shift
+
+	check_vm_active $VM || error "VM \"$VM\" is not active or does not exist"
+
+	FILES=
+	tmp=$(mktemp)
+	for file in `echo $@`; do
+		if [ -f $file ]; then
+			FILES="$FILES $file"
+			continue
+		fi
+		wget -q --show-progress -P ${tmp} $file || error "Can't download \"$file\""
+		filename=$(basename $file)
+		FILES="$FILES ${tmp}/$filename"
+	done
+
+	get_vm_ip $VM
+	wait_for_ping $VM_IP
+
+	run_script_in_vm $VM "mkdir -p $REMOTE_DIR"
+	echo "[+] Copy \"$FILES\" to remote directory \"$REMOTE_DIR\""
+	scp -q -r $FILES root@$VM_IP:$REMOTE_DIR
+
+	rm -fr $tmp
+}
+
 run_test() {
 	local need_to_delete_vm=0
 	local need_to_poweroff=0
+	local install_rpm=
+
+	while getopts "r:s:" arg; do
+	case ${arg} in
+		r)
+			install_rpm="$install_rpm $OPTARG"
+			;;
+		s)
+			install_rpm="$install_rpm $(get_scratch_kernel $OPTARG)"
+			;;
+		?)
+			error "Invalid argument -${OPTARG}"
+			;;
+	esac
+	done
+
+	shift $((OPTIND - 1))
 
 	[ $# -lt 2 ] && error "Not enough arguments"
 	echo $SUPPORTED_TESTS | grep -w $2 > /dev/null 2>&1 || error "\"$2\" is not supported test"
@@ -442,6 +506,16 @@ run_test() {
 	fi
 
 	shift 2
+
+	if [ -n "$install_rpm" ]; then
+		REMOTE_DIR="/root/rpms_$RANDOM"
+
+		copy_to_vm $VM $install_rpm $REMOTE_DIR
+
+		run_script_in_vm $VM install_rpm $REMOTE_DIR
+
+		reboot_vm $VM
+	fi
 
 	case "$TEST" in
 		xfstests)	run_xfstests $VM $@;;
@@ -532,6 +606,7 @@ fi
 [ -z "$SSH_PUBKEY" ] && echo "Variable SSH_PUBKEY is not set. See $TEMPLATE_CONFIG_FILE" && exit 1
 [ -z "$LVM_VG" ] && echo "Variable LVM_VG is not set. See $TEMPLATE_CONFIG_FILE" && exit 1
 [ -z "$THIN_POOL" ] && echo "Variable THIN_POOL is not set. See $TEMPLATE_CONFIG_FILE" && exit 1
+[ -z "$RH_USERNAME" ] && echo "Variable RH_USERNAME is not set. See $TEMPLATE_CONFIG_FILE" && exit 1
 
 check_requirements
 
