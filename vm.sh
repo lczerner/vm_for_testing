@@ -214,15 +214,18 @@ run_script_in_vm() {
 	if [ -n "$script" ]; then
 		echo "[+] Running script \"$script $@\""
 		ssh root@$VM_IP '/bin/bash -s' < $script - $@
+		ret=$?
 	elif [ -n "$command" ]; then
 		echo "[+] Running command \"$command\""
 		ssh root@$VM_IP "$command"
+		ret=$?
 	fi
 
 	if [ "$need_to_poweroff" == "1" ]; then
 		stop_vm $VM
 	fi
 
+	return $ret
 }
 
 
@@ -462,7 +465,7 @@ copy_to_vm() {
 
 	run_script_in_vm $VM "mkdir -p $REMOTE_DIR"
 	echo "[+] Copy \"$FILES\" to remote directory \"$REMOTE_DIR\""
-	scp -q -r $FILES root@$VM_IP:$REMOTE_DIR
+	scp -q -r $FILES root@$VM_IP:$REMOTE_DIR || error "Failed copying the files"
 
 	rm -fr $tmp
 }
@@ -514,7 +517,7 @@ run_test() {
 
 		copy_to_vm $VM $install_rpm $REMOTE_DIR
 
-		run_script_in_vm $VM install_rpm $REMOTE_DIR
+		run_script_in_vm $VM install_rpm $REMOTE_DIR || error "Failed to install rpms"
 
 		reboot_vm $VM
 	fi
@@ -576,7 +579,7 @@ push_build_test() {
 	echo "[+] Push the branch to vm repo"
 	git push ssh://root@$VM_IP:/root/linux $LOCAL_BRANCH:$REMOTE_BRANCH
 
-	run_script_in_vm $VM build_kernel $REMOTE_BRANCH
+	run_script_in_vm $VM build_kernel $REMOTE_BRANCH || error "Build failed"
 
 	reboot_vm $VM
 
