@@ -7,7 +7,6 @@ cleanup() {
 	# Just in case we want to push to the same branch again
 	cd $KERNEL_DIR
 	rm -f .localversion
-	git checkout master
 }
 
 trap cleanup EXIT
