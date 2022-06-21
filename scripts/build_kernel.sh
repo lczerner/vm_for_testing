@@ -14,6 +14,7 @@ trap cleanup EXIT
 cp /lib/modules/$(uname -r)/build/.config $KERNEL_DIR/.config
 
 modprobe ext4
+modprobe loop
 
 cd $KERNEL_DIR
 
