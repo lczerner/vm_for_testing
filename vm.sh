@@ -20,7 +20,7 @@ VM_ONLINE=
 LV_CREATED=
 
 usage() {
-	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT"
+	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
 	echo ""
 	echo "	help			Print this help"
 	echo "	list | ls		List all vms"
@@ -41,6 +41,7 @@ usage() {
 	echo "				Push the BRANCH from repository in the current directory, or specified PATH to the VM."
 	echo "				Build and install the kernel and run xfstests with specified OPTIONS"
 	echo "	run VM SCRIPT		Run SCRIPT in VM"
+	echo "	console VM		Run 'virsh console' for the VM"
 }
 
 error() {
@@ -590,6 +591,13 @@ push_build_test() {
 	fi
 }
 
+connect_to_console() {
+	[ $# -lt 1 ] && error "Not enough arguments"
+	check_vm_active $1 || error "VM \"$1\" is not running"
+
+	sudo virsh console $1
+}
+
 list_vms() {
 	sudo virsh list --all
 }
@@ -644,6 +652,7 @@ case "$COMMAND" in
 	update)			run_script_in_vm $1 init update;;
 	test)			run_test $@;;
 	testbuild)		push_build_test $@;;
+	console)		connect_to_console $@;;
 	help)
 				usage
 				exit 0
