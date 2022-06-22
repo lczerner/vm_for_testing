@@ -119,7 +119,7 @@ wait_for_ping() {
 	[ "$VM_ONLINE" == "true" ] && return
 
 	echo "[+] Waiting for host to be online"
-	repeat=20
+	repeat=60
 	for i in $(seq $repeat); do
 		echo -n "."
 		ping -W1 -i1 -c1 $1 >/dev/null 2>&1
@@ -139,7 +139,7 @@ get_vm_ip() {
 	[ -n "$VM_IP" ] && return
 
 	echo "[+] Obtaining the IP address"
-	repeat=20
+	repeat=60
 	for i in $(seq $repeat); do
 		echo -n "."
 		ip=$(get_address $1)
