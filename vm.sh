@@ -20,7 +20,7 @@ VM_ONLINE=
 LV_CREATED=
 
 usage() {
-	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
+	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST [OPTIONS] | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
 	echo ""
 	echo "	help			Print this help"
 	echo "	list | ls		List all vms"
@@ -33,8 +33,8 @@ usage() {
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
 	echo "	update VM		Update the vm"
-	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST"
-	echo "				Run TEST on VM. Optinally install RPM packages provided either as a file, or as a link."
+	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [OPTIONS]"
+	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optinally install RPM packages provided either as a file, or as a link."
 	echo "				Or install kernel from brew identified by BREW_ID"
 	echo "				Currently supported tests: $SUPPORTED_TESTS"
 	echo "	testbuild VM [PATH] BRANCH [OPTIONS]"
