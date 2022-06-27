@@ -351,12 +351,18 @@ new_vm() {
 		sudo blkdiscard $dev
 	fi
 
+	# Copy in config files
+	COPY_IN="--copy-in ~/.gitconfig:/root/ \
+		 --copy-in ~/.vimrc:/root/ \
+		 --copy-in ~/.vim:/root/"
+
 	echo "[+] Building the new image"
 	builder="sudo virt-builder $release \
 		--output $dev \
 		--smp 8 --memsize 4096 \
 		--hostname $vm_name \
 		$ENABLE_EPEL \
+		$COPY_IN \
 		--copy-in $INIT_SCRIPT:/root/ \
 		--ssh-inject \"root:string:$SSH_PUBKEY\" \
 		--selinux-relabel || error 'virt-builder failed'"
