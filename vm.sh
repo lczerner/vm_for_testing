@@ -20,6 +20,7 @@ VM_ONLINE=
 LV_CREATED=
 VM_CLONED=
 NEW_VM=
+INSTALL_RPMS=
 
 usage() {
 	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST [OPTIONS] | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
@@ -31,13 +32,13 @@ usage() {
 	echo "	new VM			Create a new vm named VM"
 	echo "				Currently supported OS: rhel8 rhel9 fedora35"
 	echo "	delete | rm VM		Remove a VM"
-	echo "	clone VM		Clone a VM"
+	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM"
+	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by BREW_ID."
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
 	echo "	update VM		Update the vm"
 	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [OPTIONS]"
-	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optinally install RPM packages provided either as a file, or as a link."
-	echo "				Or install kernel from brew identified by BREW_ID"
+	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optionally install RPM packages provided either as a file, link or identified by BREW_ID."
 	echo "				Currently supported tests: $SUPPORTED_TESTS"
 	echo "	testbuild VM [PATH] BRANCH [OPTIONS]"
 	echo "				Push the BRANCH from repository in the current directory, or specified PATH to the VM."
@@ -231,6 +232,35 @@ run_script_in_vm() {
 	return $ret
 }
 
+parse_install_args() {
+	while getopts "r:s:" arg; do
+	case ${arg} in
+		r)
+			INSTALL_RPMS="$INSTALL_RPMS $OPTARG"
+			;;
+		s)
+			INSTALL_RPMS="$INSTALL_RPMS $(get_scratch_kernel $OPTARG)"
+			;;
+		?)
+			error "Invalid argument -${OPTARG}"
+			;;
+	esac
+	done
+}
+
+install_rpms() {
+	check_vm_active $1 || error "\"$1\" is not running!"
+
+	if [ -n "$INSTALL_RPMS" ]; then
+		REMOTE_DIR="/root/rpms_$RANDOM"
+
+		copy_to_vm $1 $INSTALL_RPMS $REMOTE_DIR
+
+		run_script_in_vm $1 install_rpm $REMOTE_DIR || error "Failed to install rpms"
+
+		reboot_vm $1
+	fi
+}
 
 clone_vm() {
 	[ -z "$1" ] && error "Provide VM name to clone"
@@ -482,35 +512,22 @@ copy_to_vm() {
 
 run_test() {
 	local need_to_poweroff=0
-	local install_rpm=
 
-	while getopts "r:s:" arg; do
-	case ${arg} in
-		r)
-			install_rpm="$install_rpm $OPTARG"
-			;;
-		s)
-			install_rpm="$install_rpm $(get_scratch_kernel $OPTARG)"
-			;;
-		?)
-			error "Invalid argument -${OPTARG}"
-			;;
-	esac
-	done
-
+	parse_install_args $@
 	shift $((OPTIND - 1))
 
 	[ $# -lt 2 ] && error "Not enough arguments"
-	echo $SUPPORTED_TESTS | grep -w $2 > /dev/null 2>&1 || error "\"$2\" is not supported test"
-	check_vm_exists $1 || error "VM \"$1\" does not exist"
-
 	VM=$1
+	TEST=$2
+
+	echo $SUPPORTED_TESTS | grep -w $TEST > /dev/null 2>&1 || error "\"$TEST\" is not supported test"
+	check_vm_exists $VM || error "VM \"$VM\" does not exist"
+
 	# Is it clone? If not create one
-	if [[ ! "$1" =~ "clone" ]]; then
-		clone_vm $1
+	if [[ ! "$VM" =~ "clone" ]]; then
+		clone_vm $VM
 		VM=$NEW_VM
 	fi
-	TEST=$2
 
 	if ! check_vm_active $VM; then
 		start_vm $VM
@@ -519,15 +536,7 @@ run_test() {
 
 	shift 2
 
-	if [ -n "$install_rpm" ]; then
-		REMOTE_DIR="/root/rpms_$RANDOM"
-
-		copy_to_vm $VM $install_rpm $REMOTE_DIR
-
-		run_script_in_vm $VM install_rpm $REMOTE_DIR || error "Failed to install rpms"
-
-		reboot_vm $VM
-	fi
+	install_rpms $VM
 
 	case "$TEST" in
 		xfstests)	run_xfstests $VM $@;;
@@ -597,6 +606,18 @@ push_build_test() {
 	fi
 }
 
+command_clone_vm() {
+	parse_install_args $@
+	shift $((OPTIND - 1))
+
+	clone_vm $@
+	start_vm $NEW_VM
+
+	install_rpms $NEW_VM
+
+	ssh_to_vm $NEW_VM
+}
+
 connect_to_console() {
 	[ $# -lt 1 ] && error "Not enough arguments"
 	check_vm_active $1 || error "VM \"$1\" is not running"
@@ -638,12 +659,7 @@ COMMAND=$1
 shift
 
 case "$COMMAND" in
-	clone)
-				clone_vm $@
-				start_vm $NEW_VM
-				ssh_to_vm $NEW_VM
-				;;
-
+	clone)			command_clone_vm $@;;
 	rm | delete)		delete_vm $@;;
 	ls | list)		list_vms;;
 	start)			start_vm $1;;
