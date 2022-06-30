@@ -18,6 +18,8 @@ VM_LV_SIZE=100G
 VM_IP=
 VM_ONLINE=
 LV_CREATED=
+VM_CLONED=
+NEW_VM=
 
 usage() {
 	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST [OPTIONS] | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
@@ -288,6 +290,7 @@ clone_vm() {
 	sudo virsh define $NEW_XML || error "Failed to define the new VM"
 	sudo rm -f $NEW_XML
 	LV_CREATED=
+	VM_CLONED=1
 }
 
 delete_vm() {
@@ -478,7 +481,6 @@ copy_to_vm() {
 }
 
 run_test() {
-	local need_to_delete_vm=0
 	local need_to_poweroff=0
 	local install_rpm=
 
@@ -502,13 +504,11 @@ run_test() {
 	echo $SUPPORTED_TESTS | grep -w $2 > /dev/null 2>&1 || error "\"$2\" is not supported test"
 	check_vm_exists $1 || error "VM \"$1\" does not exist"
 
+	VM=$1
 	# Is it clone? If not create one
 	if [[ ! "$1" =~ "clone" ]]; then
 		clone_vm $1
 		VM=$NEW_VM
-		local need_to_delete_vm=1
-	else
-		VM=$1
 	fi
 	TEST=$2
 
@@ -534,7 +534,7 @@ run_test() {
 		e2fsprogs)	test_e2fsprogs $VM $@;;
 	esac
 
-	if [ "$need_to_delete_vm" == "1" ]; then
+	if [ "$VM_CLONED" == "1" ]; then
 		delete_vm $VM
 		return
 	fi
