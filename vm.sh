@@ -21,6 +21,7 @@ LV_CREATED=
 VM_CLONED=
 NEW_VM=
 INSTALL_RPMS=
+ARGS_SHIFT=0
 
 usage() {
 	echo "$(basename $0) help | ls | start VM | stop VM | rm VM | clone VM | ip VM | update VM | test VM TEST [OPTIONS] | testbuild VM [PATH] BRANCH [OPTIONS] | run VM SCRIPT | console VM"
@@ -45,6 +46,8 @@ usage() {
 	echo "				Build and install the kernel and run xfstests with specified OPTIONS"
 	echo "	run VM SCRIPT		Run SCRIPT in VM"
 	echo "	console VM		Run 'virsh console' for the VM"
+	echo "	build VM [PATH] BRANCH	Push the BRANCH from repository in the current directory, or speciied PATH to the VM."
+	echo "				Build and install the kernel, reboot and connect to the vm"
 }
 
 error() {
@@ -162,7 +165,7 @@ ssh_to_vm() {
 	get_vm_ip $1
 
 	wait_for_ping $VM_IP
-	echo "[+] Connecting via ssh root@$VM_IP"
+	echo "[+] Connecting to $1 via ssh root@$VM_IP"
 	sleep 1
 	ssh root@$VM_IP
 }
@@ -553,12 +556,14 @@ run_test() {
 	fi
 }
 
-push_build_test() {
+push_build_kernel() {
 	[ $# -lt 1 ] && error "Not enough arguments"
 	check_vm_exists $1 || error "VM \"$1\" does not exist"
 	VM=$1
 
 	shift
+	((ARGS_SHIFT++))
+
 	# What options can we get?
 	# argument pos       1              2        		3
 	# vm testbuild rhel8 ~/kernel/linux [test options]
@@ -569,6 +574,7 @@ push_build_test() {
 	if [ -d "$1" ]; then
 		cd $1
 		shift
+		((ARGS_SHIFT++))
 	fi
 
 	# Get the branch name
@@ -576,6 +582,7 @@ push_build_test() {
 	LOCAL_BRANCH=$1
 	git branch | grep -w $1 > /dev/null 2>&1 || error "Branch \"$LOCAL_BRANCH\" not found"
 	shift
+	((ARGS_SHIFT++))
 
 	# Is it clone? If not create one
 	if [[ ! "$VM" =~ "clone" ]]; then
@@ -598,6 +605,15 @@ push_build_test() {
 	run_script_in_vm $VM build_kernel $REMOTE_BRANCH || error "Build failed"
 
 	reboot_vm $VM
+}
+
+push_build_test() {
+	[ $# -lt 1 ] && error "Not enough arguments"
+	check_vm_exists $1 || error "VM \"$1\" does not exist"
+	VM=$1
+
+	push_build_kernel $@
+	shift $ARGS_SHIFT
 
 	run_xfstests $VM $@
 
@@ -675,6 +691,10 @@ case "$COMMAND" in
 	test)			run_test $@;;
 	testbuild)		push_build_test $@;;
 	console)		connect_to_console $@;;
+	build)
+				push_build_kernel $@
+				ssh_to_vm $VM
+				;;
 	help)
 				usage
 				exit 0
