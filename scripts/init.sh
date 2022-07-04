@@ -62,7 +62,7 @@ if [ "$1" == "update" ]; then
 fi
 
 dnf --skip-broken -y groupinstall 'Development Tools'
-dnf --skip-broken -y install acl attr automake bc dump e2fsprogs gawk gcc gdbm-devel git kernel-devel libacl-devel libaio-devel libcap-devel libtool libuuid-devel lvm2 make psmisc python3 quota sed sqlite udftools xfsprogs userspace-rcu-devel libblkid-devel libattr-devel ncurses-devel e2fsprogs-devel zlib-devel vim-enhanced wget inih-devel bison flex elfutils-libelf-devel openssl-devel openssl-libs openssl dwarves tar grubby zstd bzip2 meson libuuid-devel beakerlib beakerlib-redhat rhts-test-env iotop tmux screen dbench fio git indent inih-devel meson krb5-workstation kexec-tools crash
+dnf --skip-broken -y install acl attr automake bc dump e2fsprogs gawk gcc gdbm-devel git kernel-devel libacl-devel libaio-devel libcap-devel libtool libuuid-devel lvm2 make psmisc python3 quota sed sqlite udftools xfsprogs userspace-rcu-devel libblkid-devel libattr-devel ncurses-devel e2fsprogs-devel zlib-devel vim-enhanced wget inih-devel bison flex elfutils-libelf-devel openssl-devel openssl-libs openssl dwarves tar grubby zstd bzip2 meson libuuid-devel beakerlib beakerlib-redhat rhts-test-env iotop tmux screen dbench fio git indent inih-devel meson krb5-workstation kexec-tools crash fsverity-utils
 
 git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git &
 
@@ -73,7 +73,7 @@ dnf --skip-broken -y update
 # Setup kdump
 grubby --args="crashkernel=512M" --update-kernel=ALL
 systemctl enable kdump.service
-sysctl kernel.panic_on_oops=1
+sysctl kernel.panic_on_oops=1 >> /etc/sysctl.conf
 
 git clone git://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git e2fsprogs
 git clone git://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git xfstests
