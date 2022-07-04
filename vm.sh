@@ -33,8 +33,9 @@ usage() {
 	echo "	new VM			Create a new vm named VM"
 	echo "				Currently supported OS: rhel8 rhel9 fedora35"
 	echo "	delete | rm VM		Remove a VM"
-	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM"
+	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM [NAME]"
 	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by BREW_ID."
+	echo "				If NAME is given, then the new VM name will be in format VM_clone_NAME"
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
 	echo "	update VM		Update the vm"
@@ -280,9 +281,8 @@ clone_vm() {
 	[ -b "$VM_DEV" ] || error "$VM_DEV block device does not exist"
 
 	if [ -n "$2" ]; then
-		NEW_VM="$1_$2"
-		sudo virsh list --name | grep "^$NEW_VM$" > /dev/null 2>&1
-		[ $? -ne 0 ] && error "VM with the name \"$NEW_VM\" already exist"
+		NEW_VM="$1_clone_$2"
+		check_vm_exists $NEW_VM && error "VM with the name \"$NEW_VM\" already exist"
 	else
 		NEW_VM=$(create_new_vm_name)
 	fi
