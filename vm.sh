@@ -28,11 +28,11 @@ usage() {
 	echo ""
 	echo "	help			Print this help"
 	echo "	list | ls		List all vms"
-	echo "	start VM		Start a VM"
-	echo "	stop VM			Stop a VM"
+	echo "	start VMs		Start all specified VMs"
+	echo "	stop VMs		Stop all specified VMs"
 	echo "	new VM			Create a new vm named VM"
 	echo "				Currently supported OS: rhel8 rhel9 fedora35"
-	echo "	delete | rm VM		Remove a VM"
+	echo "	delete | rm VMs		Remove all spefied VMs."
 	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM [NAME]"
 	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by BREW_ID."
 	echo "				If NAME is given, then the new VM name will be in format VM_clone_NAME"
@@ -172,11 +172,21 @@ ssh_to_vm() {
 }
 
 start_vm() {
-	[ -z "$1" ] && error "Provide VM name to start"
-	check_vm_active $1 && return
-	check_vm_inactive $1 || error "VM \"$1\" does not exist or it is already running"
-	echo "[+] Starting the vm $1"
-	sudo virsh start $1 > /dev/null 2>&1
+	[ "$#" -lt 1 ] && error "Provide VM name to start"
+
+	while [ "$#" -gt 0 ]; do
+		check_vm_active $1 && shift && continue
+
+		check_vm_exists $1
+		if [ $? -ne 0 ]; then
+			echo "VM \"$1\" does not exist"
+			shift
+			continue
+		fi
+		echo "[+] Starting the vm $1"
+		sudo virsh start $1 > /dev/null 2>&1
+		shift
+	done
 }
 
 get_script_path() {
@@ -327,23 +337,43 @@ clone_vm() {
 }
 
 delete_vm() {
-	[ -z "$1" ] && error "Provide VM name to delete"
-	check_vm_exists $1 || error "VM \"$1\" does not exist"
-	sudo virsh destroy $1 > /dev/null 2>&1
-	VM_IP=
-	VM_ONLINE=
-	sleep 1
+	[ "$#" -lt 1 ] && error "Provide VM name to delete"
 
-	sudo lvremove -y $LVM_VG/$1 $LVM_VG/${1}_test $LVM_VG/${1}_scratch
-	sudo virsh undefine $1 || error "Can't undefine vm"
+	while [ "$#" -gt 0 ]; do
+		check_vm_exists $1
+		if [ $? -ne 0 ]; then
+			echo "VM \"$1\" does not exist"
+			shift
+			continue
+		fi
+		echo "[+] Removing VM \"$1\""
+		sudo virsh destroy $1 > /dev/null 2>&1
+		VM_IP=
+		VM_ONLINE=
+		sleep 1
+
+		sudo lvremove -y $LVM_VG/$1 $LVM_VG/${1}_test $LVM_VG/${1}_scratch
+		sudo virsh undefine $1 || echo "Can't undefine vm \"$1\""
+		shift
+	done
 }
 
 stop_vm() {
-	[ -z "$1" ] && error "Provide VM name to stop"
-	check_vm_active $1 || error "VM \"$1\" does not exist"
-	sudo virsh destroy $1 > /dev/null 2>&1
-	VM_IP=
-	VM_ONLINE=
+	[ "$#" -lt 1 ] && error "Provide VM name to stop"
+
+	while [ "$#" -gt 0 ]; do
+		check_vm_active $1
+		if [ $? -ne 0 ]; then
+			echo "VM \"$1\" does not exist, or isn't active"
+			shift
+			continue
+		fi
+		echo "[+] Stopping VM \"$1\""
+		sudo virsh destroy $1 > /dev/null 2>&1
+		VM_IP=
+		VM_ONLINE=
+		shift
+	done
 }
 
 reboot_vm() {
@@ -678,7 +708,7 @@ case "$COMMAND" in
 	clone)			command_clone_vm $@;;
 	rm | delete)		delete_vm $@;;
 	ls | list)		list_vms;;
-	start)			start_vm $1;;
+	start)			start_vm $@;;
 	stop)			stop_vm $@;;
 	ip | addr)		get_vm_ip $@;;
 	ssh)
