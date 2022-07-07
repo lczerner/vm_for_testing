@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_VMS="fedora35 rhel8 rhel9"
+BASE_VMS="fedora36 fedora35 rhel8 rhel9"
 BASE_DIR=`dirname "$(realpath $0)"`
 SCRIPTS_DIR="$BASE_DIR/scripts"
 TEMPLATES_DIR="$BASE_DIR/templates"
@@ -32,7 +32,7 @@ usage() {
 	echo "	start VMs		Start all specified VMs"
 	echo "	stop VMs		Stop all specified VMs"
 	echo "	new VM			Create a new vm named VM"
-	echo "				Currently supported OS: rhel8 rhel9 fedora35"
+	echo "				Currently supported OS: $BASE_VMS"
 	echo "	delete | rm VMs		Remove all spefied VMs."
 	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM [NAME]"
 	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by BREW_ID."
@@ -403,6 +403,10 @@ new_vm() {
 		fedora35)
 			vm_name=fedora35
 			release=fedora-35
+		;;
+		fedora36)
+			vm_name=fedora36
+			release=fedora-36
 		;;
 		*) error "Vm $1 is not supported"
 	esac
