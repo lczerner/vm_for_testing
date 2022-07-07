@@ -1,5 +1,6 @@
 #!/bin/bash
 
+BASE_VMS="fedora35 rhel8 rhel9"
 BASE_DIR=`dirname "$(realpath $0)"`
 SCRIPTS_DIR="$BASE_DIR/scripts"
 TEMPLATES_DIR="$BASE_DIR/templates"
@@ -38,7 +39,7 @@ usage() {
 	echo "				If NAME is given, then the new VM name will be in format VM_clone_NAME"
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
-	echo "	update VM		Update the vm"
+	echo "	update VMs		Update all specified VMs"
 	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [OPTIONS]"
 	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optionally install RPM packages provided either as a file, link or identified by BREW_ID."
 	echo "				Currently supported tests: $SUPPORTED_TESTS"
@@ -675,6 +676,42 @@ list_vms() {
 	sudo virsh list --all
 }
 
+update_vm() {
+	[ "$#" -lt 1 ] && error "Provide VM name to update"
+	tmp=$(mktemp)
+	declare -A arrUpdate
+
+	while [ "$#" -gt 0 ]; do
+		check_vm_exists $1
+		if [ $? -ne 0 ]; then
+			echo "VM \"$1\" does not exist"
+			shift
+			continue
+		fi
+		log=${tmp}.$1
+		touch $log
+		echo "[+] Updating the vm $1 (log: $log)"
+		run_script_in_vm $1 init update > $log 2>&1 &
+		arrUpdate[$!]=$1
+		shift
+	done
+
+	# Wait for all the update processes
+	while true; do
+		wait -n -p PID
+		st=$?
+		[ "$st" -eq 127 ] && break
+		if [ "$st" -eq 0 ]; then
+			res="DONE"
+		else
+			res="FAILED"
+		fi
+		echo "[+] ${arrUpdate[$PID]} update $res (log: $tmp.${arrUpdate[$PID]})"
+		unset arrUpdate[$PID]
+		vals=${arrUpdate[@]}
+		[ -n "$vals" ] && echo -e "\tstill waiting for ${arrUpdate[@]}"
+	done
+}
 
 ###############################################################################
 # Start of the script
@@ -717,7 +754,7 @@ case "$COMMAND" in
 				;;
 	new)			new_vm $@;;
 	run)			run_script_in_vm $@;;
-	update)			run_script_in_vm $1 init update;;
+	update)			update_vm $@;;
 	test)			run_test $@;;
 	testbuild)		push_build_test $@;;
 	console)		connect_to_console $@;;
