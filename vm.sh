@@ -299,7 +299,13 @@ clone_vm() {
 	[ -b "$VM_DEV" ] || error "$VM_DEV block device does not exist"
 
 	if [ -n "$2" ]; then
-		NEW_VM="$1_clone_$2"
+		# Is it clone already? If so don't add another 'clone' to the name
+		if [[ "$VM" =~ "clone" ]]; then
+			NEW_VM="$1_$2"
+		else
+			NEW_VM="$1_clone_$2"
+		fi
+
 		check_vm_exists $NEW_VM && error "VM with the name \"$NEW_VM\" already exist"
 	else
 		NEW_VM=$(create_new_vm_name)
