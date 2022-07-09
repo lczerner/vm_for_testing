@@ -140,7 +140,7 @@ get_vm_ip() {
 		[ -n "$ip" ] && break
 		sleep 1
 	done
-	echo -en "\033[2K"
+	printf "\r"
 	[ -z "$ip" ] && error "Can't get IP address for $1"
 	VM_IP[$1]=$ip
 	echo $ip
@@ -158,7 +158,7 @@ wait_for_ping() {
 		[ $? -eq 0 ] && VM_ONLINE[$1]="true" && break
 		sleep 1
 	done
-	echo -e "\033[2K$1 is live"
+	printf "\r$1 is live\n"
 }
 
 wait_vm_online() {
