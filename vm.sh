@@ -116,7 +116,7 @@ create_new_vm_name() {
 		name="${VM}_clone_${i}"
 		dev_name=$(get_vm_dev $name)
 		check_vm_exists $name && continue
-		[ -b $VM_DEV ] || continue
+		[ -b $dev_name ] && continue
 		break;
 	done
 	echo $name
