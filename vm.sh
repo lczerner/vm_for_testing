@@ -690,6 +690,19 @@ list_vms() {
 	sudo virsh list --all
 }
 
+update_watch_log() {
+	width=$((`tput cols` - 5))
+	while true; do
+		for vm in $@; do
+			line="[$vm]: $(tail -n1 ${tmp}.$vm 2>&1)"
+			echo ${line:0:$width}
+		done
+		sleep 1
+		tput cuu $#
+		tput ed
+	done
+}
+
 update_vm() {
 	[ "$#" -lt 1 ] && error "Provide VM name to update"
 	tmp=$(mktemp)
@@ -710,21 +723,24 @@ update_vm() {
 		shift
 	done
 
+	# Start the log watcher
+	echo ""
+	update_watch_log ${arrUpdate[@]} &
+	watcher=$!
+
 	# Wait for all the update processes
 	while true; do
-		wait -n -p PID
+		wait -n -p PID ${!arrUpdate[@]}
 		st=$?
 		[ "$st" -eq 127 ] && break
-		if [ "$st" -eq 0 ]; then
-			res="DONE"
-		else
-			res="FAILED"
-		fi
-		echo "[+] ${arrUpdate[$PID]} update $res (log: $tmp.${arrUpdate[$PID]})"
 		unset arrUpdate[$PID]
 		vals=${arrUpdate[@]}
-		[ -n "$vals" ] && echo -e "\tstill waiting for ${arrUpdate[@]}"
+		[ -z "$vals" ] && break
 	done
+
+	# We're done s kill the log watcher
+	kill $watcher
+	wait $watcher >/dev/null 2>&1
 }
 
 ###############################################################################

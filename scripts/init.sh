@@ -19,8 +19,6 @@ EOF
 if [ "$1" == "update" ]; then
 	dnf --skip-broken -y update
 
-	semodule -B &
-
 	cd /root/linux
 	git pull --all &
 
@@ -57,6 +55,9 @@ if [ "$1" == "update" ]; then
 	useradd 123456-fsgqa
 	useradd fsgqa2
 
+	semodule -B
+
+	echo "Waiting for git"
 	wait
 	exit
 fi
