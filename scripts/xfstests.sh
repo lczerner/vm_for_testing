@@ -22,7 +22,6 @@ rm -rf results
 
 dmesg -C
 
-echo "./check $@ | tee $XFSTESTS_LOG"
 ./check $@ | tee $XFSTESTS_LOG
 
 dmesg > $DMESG_LOG

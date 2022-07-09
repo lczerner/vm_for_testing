@@ -16,8 +16,8 @@ SUPPORTED_TESTS="xfstests e2fsprogs"
 
 VM_LV_SIZE=100G
 
-VM_IP=
-VM_ONLINE=
+declare -A VM_IP
+declare -A VM_ONLINE
 LV_CREATED=
 VM_CLONED=
 NEW_VM=
@@ -122,29 +122,15 @@ create_new_vm_name() {
 	echo $name
 }
 
-wait_for_ping() {
-	[ -z "$1" ] && error "Provide IP address to ping"
-	[ "$VM_ONLINE" == "true" ] && return
-
-	echo "[+] Waiting for host to be online"
-	repeat=60
-	for i in $(seq $repeat); do
-		echo -n "."
-		ping -W1 -i1 -c1 $1 >/dev/null 2>&1
-		[ $? -eq 0 ] && VM_ONLINE="true" && break
-		sleep 1
-	done
-	echo -e "\033[2K$1 is live"
-}
-
 get_address() {
 	sudo virsh -q domifaddr $1 | grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}"
 }
 
 get_vm_ip() {
+	local ip
 	[ -z "$1" ] && error "Provide VM name to get the ip for"
 	check_vm_active $1 || error "VM \"$1\" does not exist or is not running"
-	[ -n "$VM_IP" ] && return
+	[ -n "${VM_IP[$1]}" ] && return
 
 	echo "[+] Obtaining the IP address"
 	repeat=60
@@ -156,20 +142,40 @@ get_vm_ip() {
 	done
 	echo -en "\033[2K"
 	[ -z "$ip" ] && error "Can't get IP address for $1"
-	VM_IP=$ip
-	echo $VM_IP
+	VM_IP[$1]=$ip
+	echo $ip
+}
+
+wait_for_ping() {
+	[ -z "$1" ] && error "Provide IP address to ping"
+	[ "${VM_ONLINE[$1]}" == "true" ] && return
+
+	echo "[+] Waiting for host to be online"
+	repeat=60
+	for i in $(seq $repeat); do
+		echo -n "."
+		ping -W1 -i1 -c1 $1 >/dev/null 2>&1
+		[ $? -eq 0 ] && VM_ONLINE[$1]="true" && break
+		sleep 1
+	done
+	echo -e "\033[2K$1 is live"
+}
+
+wait_vm_online() {
+	[ -z "$1" ] && error "Provide VM name"
+	get_vm_ip $1
+	wait_for_ping ${VM_IP[$1]}
 }
 
 ssh_to_vm() {
 	[ -z "$1" ] && error "Provide VM name to get the ip for"
 	check_vm_active $1 || error "VM \"$1\" does not exist or is not running"
 
-	get_vm_ip $1
+	wait_vm_online $1
 
-	wait_for_ping $VM_IP
-	echo "[+] Connecting to $1 via ssh root@$VM_IP"
+	echo "[+] Connecting to $1 via ssh root@${VM_IP[$1]}"
 	sleep 1
-	ssh root@$VM_IP
+	ssh root@${VM_IP[$1]}
 }
 
 start_vm() {
@@ -203,10 +209,12 @@ get_script_path() {
 }
 
 run_script_in_vm() {
+	local need_to_poweroff=0
+	local ip
+
 	if [ $# -lt 2 ]; then
 		error "Run script requires 2 parameters."
 	fi
-	local need_to_poweroff=0
 
 	[ -z "$1" ] && error "Provide VM name to get the ip for"
 	check_vm_exists $1 || error "VM \"$1\" does not exist"
@@ -222,9 +230,8 @@ run_script_in_vm() {
 
 	[ -z "$script" ] && command=$2
 
-	get_vm_ip $VM
-	wait_for_ping $VM_IP
-
+	wait_vm_online $VM
+	ip=${VM_IP[$VM]}
 
 	# Strip the first two arguments, we're going to pass the rest
 	# as arguments for the script
@@ -232,11 +239,11 @@ run_script_in_vm() {
 
 	if [ -n "$script" ]; then
 		echo "[+] Running script \"$script $@\""
-		ssh root@$VM_IP '/bin/bash -s' < $script - $@
+		ssh root@$ip '/bin/bash -s' < $script - $@
 		ret=$?
 	elif [ -n "$command" ]; then
 		echo "[+] Running command \"$command\""
-		ssh root@$VM_IP "$command"
+		ssh root@$ip "$command"
 		ret=$?
 	fi
 
@@ -349,8 +356,8 @@ delete_vm() {
 		fi
 		echo "[+] Removing VM \"$1\""
 		sudo virsh destroy $1 > /dev/null 2>&1
-		VM_IP=
-		VM_ONLINE=
+		unset VM_IP[$1]
+		unset VM_ONINE[$1]
 		sleep 1
 
 		sudo lvremove -y $LVM_VG/$1 $LVM_VG/${1}_test $LVM_VG/${1}_scratch
@@ -371,8 +378,8 @@ stop_vm() {
 		fi
 		echo "[+] Stopping VM \"$1\""
 		sudo virsh destroy $1 > /dev/null 2>&1
-		VM_IP=
-		VM_ONLINE=
+		unset VM_IP[$1]
+		unset VM_ONLINE[$1]
 		shift
 	done
 }
@@ -381,7 +388,7 @@ reboot_vm() {
 	check_vm_active $1 || error "VM \"$1\" is not active or does not exist"
 	echo "[+] Rebooting VM"
 	run_script_in_vm $VM 'reboot'
-	VM_ONLINE=
+	unset VM_ONLINE[$1]
 	sleep 2
 }
 
@@ -463,20 +470,22 @@ new_vm() {
 }
 
 run_xfstests() {
+	local ip
 	VM=$1
 
 	# rest of the arguments will be provided to the xfstests
 	shift 1
 
 	run_script_in_vm $VM xfstests $@
+	ip=${VM_IP[$VM]}
 
-	kernel=$(ssh root@$VM_IP 'uname -r')
+	kernel=$(ssh root@$ip 'uname -r')
 	datetime=$(date +%Y-%m-%d_%H_%m_%S)
 	outdir=$RESULTS_DIR/xfstests/$kernel/$datetime
 	mkdir -p $outdir
 
 	echo "[+] Copying files from the VM"
-	scp -q -r root@$VM_IP:/root/output/* $outdir
+	scp -q -r root@$ip:/root/output/* $outdir
 	[ $? -ne 0 ] && rmdir $outdir
 
 	echo "[+] Results stored in $outdir"
@@ -488,6 +497,7 @@ test_e2fsprogs() {
 	shift 1
 
 	run_script_in_vm $VM test_e2fsprogs $@
+	ip=${VM_IP[$VM]}
 
 	version=
 	datetime=
@@ -495,7 +505,7 @@ test_e2fsprogs() {
 	mkdir -p $outdir
 
 	echo "[+] Copying files from the VM"
-	scp -q -r root@$VM_IP:/root/output/* $outdir
+	scp -q -r root@$vm:/root/output/* $outdir
 	[ $? -ne 0 ] && rmdir $outdir
 
 	echo "[+] Results stored in $outdir"
@@ -538,12 +548,12 @@ copy_to_vm() {
 		FILES="$FILES ${tmp}/$filename"
 	done
 
-	get_vm_ip $VM
-	wait_for_ping $VM_IP
+	wait_vm_online $VM
+	ip=${VM_IP[$VM]}
 
 	run_script_in_vm $VM "mkdir -p $REMOTE_DIR"
 	echo "[+] Copy \"$FILES\" to remote directory \"$REMOTE_DIR\""
-	scp -q -r $FILES root@$VM_IP:$REMOTE_DIR || error "Failed copying the files"
+	scp -q -r $FILES root@$ip:$REMOTE_DIR || error "Failed copying the files"
 
 	rm -fr $tmp
 }
@@ -599,12 +609,6 @@ push_build_kernel() {
 	shift
 	((ARGS_SHIFT++))
 
-	# What options can we get?
-	# argument pos       1              2        		3
-	# vm testbuild rhel8 ~/kernel/linux [test options]
-	# vm testbuild rhel8 ~/kernel/rhel8 my_branch		[test options]
-	# vm testbuild rhel8 my_branch
-
 	# Go into git directory
 	if [ -d "$1" ]; then
 		cd $1
@@ -630,12 +634,12 @@ push_build_kernel() {
 		local need_to_poweroff=1
 	fi
 
-	get_vm_ip $VM
-	wait_for_ping $VM_IP
+	wait_vm_online $VM
+	ip=${VM_IP[$VM]}
 
 	REMOTE_BRANCH=${LOCAL_BRANCH}_$RANDOM
 	echo "[+] Push the branch to vm repo"
-	git push ssh://root@$VM_IP:/root/linux $LOCAL_BRANCH:$REMOTE_BRANCH
+	git push ssh://root@$ip:/root/linux $LOCAL_BRANCH:$REMOTE_BRANCH
 
 	run_script_in_vm $VM build_kernel $REMOTE_BRANCH || error "Build failed"
 
