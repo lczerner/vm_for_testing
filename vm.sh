@@ -80,6 +80,7 @@ check_requirements() {
 	require_tool ssh
 	require_tool scp
 	require_tool wget
+	require_tool multitail
 
 	# Does LVM_VG exist?
 	sudo vgs --noheadings -o vg_name | grep -w $LVM_VG >/dev/null 2>&1|| \
@@ -691,23 +692,11 @@ list_vms() {
 	sudo virsh list --all
 }
 
-update_watch_log() {
-	width=$((`tput cols` - 5))
-	while true; do
-		for vm in $@; do
-			line="[$vm]: $(tail -n1 ${tmp}.$vm 2>&1)"
-			echo ${line:0:$width}
-		done
-		sleep 1
-		tput cuu $#
-		tput ed
-	done
-}
-
 update_vm() {
 	[ "$#" -lt 1 ] && error "Provide VM name to update"
 	tmp=$(mktemp)
 	declare -A arrUpdate
+	declare -A arrLogs
 
 	while [ "$#" -gt 0 ]; do
 		check_vm_exists $1
@@ -721,13 +710,11 @@ update_vm() {
 		echo "[+] Updating the vm $1 (log: $log)"
 		run_script_in_vm $1 init update > $log 2>&1 &
 		arrUpdate[$!]=$1
+		arrLogs[$1]=$log
 		shift
 	done
 
-	# Start the log watcher
-	echo ""
-	update_watch_log ${arrUpdate[@]} &
-	watcher=$!
+	multitail --mark-interval 60 --follow-all ${arrLogs[@]}
 
 	# Wait for all the update processes
 	while true; do
@@ -738,10 +725,6 @@ update_vm() {
 		vals=${arrUpdate[@]}
 		[ -z "$vals" ] && break
 	done
-
-	# We're done s kill the log watcher
-	kill $watcher
-	wait $watcher >/dev/null 2>&1
 }
 
 ###############################################################################
