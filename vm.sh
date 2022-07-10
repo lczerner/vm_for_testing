@@ -147,14 +147,15 @@ get_vm_ip() {
 }
 
 wait_for_ping() {
-	[ -z "$1" ] && error "Provide IP address to ping"
+	[ -z "$1" ] && error "Provide VM name to ping"
 	[ "${VM_ONLINE[$1]}" == "true" ] && return
 
-	echo "[+] Waiting for host to be online"
+	ip=${VM_IP[$1]}
+	echo "[+] Waiting for host to be online vm $1 ip $ip"
 	repeat=60
 	for i in $(seq $repeat); do
 		echo -n "."
-		ping -W1 -i1 -c1 $1 >/dev/null 2>&1
+		ping -W1 -i1 -c1 $ip >/dev/null 2>&1
 		[ $? -eq 0 ] && VM_ONLINE[$1]="true" && break
 		sleep 1
 	done
@@ -164,7 +165,7 @@ wait_for_ping() {
 wait_vm_online() {
 	[ -z "$1" ] && error "Provide VM name"
 	get_vm_ip $1
-	wait_for_ping ${VM_IP[$1]}
+	wait_for_ping $1
 }
 
 ssh_to_vm() {
