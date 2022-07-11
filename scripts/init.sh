@@ -3,19 +3,6 @@
 hostname=$(hostname)
 base_hname=${hostname%%.*}
 
-create_xfstests_config() {
-	cat << EOF
-export TEST_DEV=/dev/vda
-export TEST_DIR=/mnt/test1
-export SCRATCH_DEV=/dev/vdb
-export SCRATCH_MNT=/mnt/test2
-export MKFS_OPTIONS="-q -F -b4096"
-export MOUNT_OPTIONS="-o discard"
-export FSTYP=ext4
-EOF
-}
-
-
 if [ "$1" == "update" ]; then
 	dnf --skip-broken -y update
 
@@ -44,8 +31,6 @@ if [ "$1" == "update" ]; then
 	./configure
 	make -j8
 	make install
-
-	create_xfstests_config > /root/xfstests/configs/${base_hname}.config
 
 	mkdir /mnt/test1
 	mkdir /mnt/test2
@@ -81,8 +66,6 @@ git clone git://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git xfstests
 git clone git://git.kernel.org/pub/scm/fs/xfs/xfsprogs-dev.git xfsprogs
 git clone http://git.kernel.dk/fio.git
 git clone https://github.com/linux-test-project/ltp.git
-
-create_xfstests_config > /root/xfstests/configs/${base_hname}.config
 
 
 # Compile xfstests

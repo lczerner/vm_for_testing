@@ -6,7 +6,9 @@ SCRIPTS_DIR="$BASE_DIR/scripts"
 TEMPLATES_DIR="$BASE_DIR/templates"
 RESULTS_DIR="$BASE_DIR/results"
 CONFIG_FILE="$BASE_DIR/vm.conf"
+CONFIGS_DIR="$BASE_DIR/configs"
 TEMPLATE_CONFIG_FILE="$BASE_DIR/vm.conf.template"
+XFSTESTS_CONFIG="$CONFIGS_DIR/xfstests.config"
 
 TEMPLATE_XML="$TEMPLATES_DIR/template.xml"
 TEMPLATE_CLONE_XML="$TEMPLATES_DIR/template_clone.xml"
@@ -474,29 +476,140 @@ new_vm() {
 	esac
 
 	run_script_in_vm $1 init
+	copy_to_vm $1 $XFSTESTS_CONFIG /root/xfstests/configs/${vm_name}.config
 	stop_vm $1
 }
 
 run_xfstests() {
 	local ip
 	VM=$1
-
-	# rest of the arguments will be provided to the xfstests
 	shift 1
 
-	run_script_in_vm $VM xfstests $@
-	ip=${VM_IP[$VM]}
+	# Get the section options for the xfstests
+	local sections=
+	while getopts ":s:" arg; do
+	case ${arg} in
+		s)
+			case $OPTARG in
+				all)	sections="ext4 ext4_1024 ext3 ext2"
+					break
+					;;
+				*)	sections="$sections $OPTARG";;
+			esac
+			;;
+		?)
+			# sections must be specified first, stop upon
+			# encountering anything else
+			((OPTIND--))
+			break
+	esac
+	done
+
+	shift $((OPTIND - 1))
+
+	# Update the xfstests config file
+	hostname=`echo $VM | cut -f1 -d'_'`
+	copy_to_vm $VM $XFSTESTS_CONFIG /root/xfstests/configs/${hostname}.config
 
 	kernel=$(ssh root@$ip 'uname -r')
 	datetime=$(date +%Y-%m-%d_%H_%m_%S)
-	outdir=$RESULTS_DIR/xfstests/$kernel/$datetime
-	mkdir -p $outdir
 
-	echo "[+] Copying files from the VM"
-	scp -q -r root@$ip:/root/output/* $outdir
-	[ $? -ne 0 ] && rmdir $outdir
+	# Set the default if no section is specified
+	[ -z "$sections" ] && sections="ext4"
 
-	echo "[+] Results stored in $outdir"
+	n=$(echo $sections | wc -w)
+
+	# If we only have one section, run the test with normal output visible
+	# Otherwise stop the VM, clone it and start tests in parallel
+	if [ $n -eq 1 ]; then
+		run_script_in_vm $NEW_VM xfstests -s $sections $@
+
+		ip=${VM_IP[$VM]}
+		outdir=$RESULTS_DIR/xfstests/$kernel/$sections/$datetime
+		mkdir -p $outdir
+
+		scp -q -r root@$ip:/root/output/* $outdir
+		echo "[+] Section $sections test is DONE. Results stored in $outdir"
+		return
+	else
+		stop_vm $VM
+	fi
+
+	echo ""
+
+	# Run each section in a separate VM clone from the provided VM in
+	# parallel
+	declare -A arrTests
+	declare -A arrLogs
+	clones=
+	tmp=$(mktemp)
+	for s in $sections; do
+		log=${tmp}.$s
+		outdir=$RESULTS_DIR/xfstests/$kernel/$s/$datetime
+
+		if [ $n -gt 1 ]; then
+			echo "[+] Cloning $VM for section $s"
+			clone_vm $VM $s > $log 2>&1
+			if [ $? -ne 0 ]; then
+				echo "Cloning $VM failed, see log $log"
+				continue
+			fi
+			clones="$clones $NEW_VM"
+		else
+			NEW_VM=$VM
+		fi
+
+		echo "[$s] Starting test on $NEW_VM"
+		echo -e "\t live log:\t$log"
+		echo -e "\t results:\t$outdir"
+
+		# The VM needs to be started, otherwise run_script_in_vm
+		# will stop the vm after it's done
+		start_vm $NEW_VM > $log 2>&1
+
+		# Run the test and copy out results
+		(
+		run_script_in_vm $NEW_VM xfstests -s $s $@
+
+		# We knowVM is already running so it's fine to get ip directly
+		ip=${VM_IP[$NEW_VM]}
+		outdir=$RESULTS_DIR/xfstests/$kernel/$s/$datetime
+		mkdir -p $outdir
+
+		scp -q -r root@$ip:/root/output/* $outdir
+		echo "[+] Section $s test is DONE. Results stored in $outdir"
+
+		) >> $log 2>&1 &
+
+		arrTests[$!]="$s $NEW_VM"
+		arrLogs[$NEW_VM]=$log
+
+		((n--))
+	done
+
+	# Watch the logs
+	multitail --mark-interval 60 --follow-all ${arrLogs[@]}
+
+	# Wait for all the tests to finish and gather results
+	while true; do
+		wait -n -p PID ${!arrTests[@]}
+		status=$?
+		[ "$status" -eq 127 ] && break
+
+		section=${arrTests[$PID]% *}
+		vm=${arrTests[$PID]#* }
+		log=${arrLogs[$vm]}
+		echo "[$section]"
+		tail -n6 $log | grep -E '^Failures: |Failed ' || echo "No failures"
+
+		unset arrTests[$PID]
+		vals=${arrTests[@]}
+		[ -z "$vals" ] && break
+	done
+
+	echo ""
+
+	[ -n "$clones" ] && delete_vm $clones
 }
 
 test_e2fsprogs() {
@@ -559,7 +672,11 @@ copy_to_vm() {
 	wait_vm_online $VM
 	ip=${VM_IP[$VM]}
 
-	run_script_in_vm $VM "mkdir -p $REMOTE_DIR"
+	# If the target is a directory, make sure it exists first
+	if [[ "$REMOTE_DIR" =~ .*/$ ]]; then
+		run_script_in_vm $VM "mkdir -p $REMOTE_DIR"
+	fi
+
 	echo "[+] Copy \"$FILES\" to remote directory \"$REMOTE_DIR\""
 	scp -q -r $FILES root@$ip:$REMOTE_DIR || error "Failed copying the files"
 
