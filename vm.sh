@@ -327,12 +327,12 @@ clone_vm() {
 
 	devname=${NEW_VM}_test
 	echo "[+] Creating new test device $devname"
-	sudo lvcreate -n $devname -V 20G --thinpool thin_pool lvm_pool || error "lvcreate failed"
+	sudo lvcreate -n $devname -V 20G --thinpool $THIN_POOL $LVM_VG || error "lvcreate failed"
 	LV_CREATED="$LV_CREATED $devname"
 
 	devname=${NEW_VM}_scratch
 	echo "[+] Creating new scratch device $devname"
-	sudo lvcreate -n $devname -V 20G --thinpool thin_pool lvm_pool || error "lvcreate failed"
+	sudo lvcreate -n $devname -V 20G --thinpool $THIN_POOL $LVM_VG || error "lvcreate failed"
 	LV_CREATED="$LV_CREATED $devname"
 
 	echo "[+] Cloning the virtual machine"
@@ -429,10 +429,10 @@ new_vm() {
 	esac
 
 	devname=${vm_name}
-	dev="/dev/mapper/lvm_pool-$devname"
+	dev="/dev/mapper/${LVM_VG}-$devname"
 	if [ ! -b "$dev" ]; then
 		echo "[+] Creating new system device $devname"
-		sudo lvcreate -n $devname -V $VM_LV_SIZE --thinpool thin_pool lvm_pool || error "lvcreate failed"
+		sudo lvcreate -n $devname -V $VM_LV_SIZE --thinpool $THIN_POOL $LVM_VG || error "lvcreate failed"
 		LV_CREATED="$LV_CREATED $devname"
 	else
 		echo "[+] Cleaning the device"
