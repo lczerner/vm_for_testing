@@ -14,8 +14,8 @@ error() {
 #losetup /dev/loop1 || losetup -f /home/file1 || error "Failed to setup /dev/loop1"
 
 modprobe ext4
-mkfs.ext4 -Fq /dev/vda
 mkfs.ext4 -Fq /dev/vdb
+mkfs.ext4 -Fq /dev/vdc
 
 cd /root/xfstests
 rm -rf results

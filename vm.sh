@@ -11,7 +11,6 @@ TEMPLATE_CONFIG_FILE="$BASE_DIR/vm.conf.template"
 XFSTESTS_CONFIG="$CONFIGS_DIR/xfstests.config"
 
 TEMPLATE_XML="$TEMPLATES_DIR/template.xml"
-TEMPLATE_CLONE_XML="$TEMPLATES_DIR/template_clone.xml"
 INIT_SCRIPT="$SCRIPTS_DIR/init.sh"
 
 SUPPORTED_TESTS="xfstests e2fsprogs"
@@ -171,6 +170,17 @@ wait_vm_online() {
 	wait_for_ping $1
 }
 
+define_new_vm() {
+	[ "$#" -lt 1 ] && error "Provide VM name to define"
+	new_xml=$(mktemp)
+
+	cat $TEMPLATE_XML | sed "s/MY_NEW_VM_NAME/$1/g" > $new_xml
+
+	echo "[+] Defining the vm $1"
+	sudo virsh define $new_xml || error "Failed to define the new VM"
+	rm -f $new_xml
+}
+
 ssh_to_vm() {
 	[ -z "$1" ] && error "Provide VM name to get the ip for"
 	check_vm_active $1 || error "VM \"$1\" does not exist or is not running"
@@ -324,32 +334,20 @@ clone_vm() {
 	echo "[+] Creating snapshot of system volume"
 	sudo lvcreate -s --name $NEW_VM $VM_DEV || error "Failed to create snapshot"
 	LV_CREATED=$NEW_VM
+	define_new_vm $NEW_VM
 
 	devname=${NEW_VM}_test
 	echo "[+] Creating new test device $devname"
 	sudo lvcreate -n $devname -V 20G --thinpool $THIN_POOL $LVM_VG || error "lvcreate failed"
 	LV_CREATED="$LV_CREATED $devname"
+	sudo virsh attach-disk $NEW_VM /dev/mapper/${LVM_VG}-${devname} vdb --config --cache none --driver qemu --subdriver raw --io native --targetbus virtio
 
 	devname=${NEW_VM}_scratch
 	echo "[+] Creating new scratch device $devname"
 	sudo lvcreate -n $devname -V 20G --thinpool $THIN_POOL $LVM_VG || error "lvcreate failed"
 	LV_CREATED="$LV_CREATED $devname"
+	sudo virsh attach-disk $NEW_VM /dev/mapper/${LVM_VG}-${devname} vdc --config --cache none --driver qemu --subdriver raw --io native --targetbus virtio
 
-	echo "[+] Cloning the virtual machine"
-	NEW_XML=$(mktemp)
-
-#	sudo virt-clone \
-#		--original $VM \
-#		--name $NEW_VM \
-#		--file=$NEW_VM_DEV \
-#		--preserve-data \
-#		--print-xml > $NEW_XML || error "Failed to clone the VM"
-
-	cat $TEMPLATE_CLONE_XML | sed "s/MY_NEW_VM_NAME/$NEW_VM/g" > $NEW_XML
-
-	echo "[+] Defining the vm"
-	sudo virsh define $NEW_XML || error "Failed to define the new VM"
-	sudo rm -f $NEW_XML
 	LV_CREATED=
 	VM_CLONED=1
 }
@@ -457,14 +455,8 @@ new_vm() {
 
 	eval $builder
 
-	NEW_XML=$(mktemp)
-	cat $TEMPLATE_XML | sed "s/MY_NEW_VM_NAME/$1/g" > $NEW_XML
-
-	echo "[+] Defining the vm"
-	sudo virsh define $NEW_XML || error "Failed to define the new VM"
-	sudo rm -f $NEW_XML
+	define_new_vm $1
 	LV_CREATED=
-
 	start_vm $1
 
 	case "$1" in
