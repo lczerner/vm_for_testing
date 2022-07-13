@@ -28,7 +28,7 @@
     <emulator>/usr/bin/qemu-system-x86_64</emulator>
     <disk type='block'>
       <driver name='qemu' type='raw' cache='none' io='native'/>
-      <source dev='/dev/mapper/lvm_pool-MY_NEW_VM_NAME'/>
+      <source dev='/dev/mapper/MY_NEW_DEV_NAME'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>
     </disk>

@@ -174,7 +174,8 @@ define_new_vm() {
 	[ "$#" -lt 1 ] && error "Provide VM name to define"
 	new_xml=$(mktemp)
 
-	cat $TEMPLATE_XML | sed "s/MY_NEW_VM_NAME/$1/g" > $new_xml
+	devname="${LVM_VG}-$1"
+	cat $TEMPLATE_XML | sed "s/MY_NEW_VM_NAME/$1/g;s/MY_NEW_DEV_NAME/$devname/g" > $new_xml
 
 	echo "[+] Defining the vm $1"
 	sudo virsh define $new_xml || error "Failed to define the new VM"
