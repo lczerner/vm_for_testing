@@ -515,7 +515,7 @@ run_xfstests() {
 	# If we only have one section, run the test with normal output visible
 	# Otherwise stop the VM, clone it and start tests in parallel
 	if [ $n -eq 1 ]; then
-		run_script_in_vm $NEW_VM xfstests -s $sections $@
+		run_script_in_vm $VM xfstests -s $sections $@
 
 		ip=${VM_IP[$VM]}
 		outdir=$RESULTS_DIR/xfstests/$kernel/$sections/$datetime
