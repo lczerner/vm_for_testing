@@ -515,14 +515,15 @@ run_xfstests() {
 	# If we only have one section, run the test with normal output visible
 	# Otherwise stop the VM, clone it and start tests in parallel
 	if [ $n -eq 1 ]; then
-		run_script_in_vm $VM xfstests -s $sections $@
+		section=$(echo $sections | cut -f1)
+		run_script_in_vm $VM xfstests -s $section $@
 
 		ip=${VM_IP[$VM]}
-		outdir=$RESULTS_DIR/xfstests/$kernel/$sections/$datetime
+		outdir=$RESULTS_DIR/xfstests/$kernel/$section/$datetime
 		mkdir -p $outdir
 
 		scp -q -r root@$ip:/root/output/* $outdir
-		echo "[+] Section $sections test is DONE. Results stored in $outdir"
+		echo "[+] Section $section test is DONE. Results stored in $outdir"
 		return
 	else
 		stop_vm $VM
