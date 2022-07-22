@@ -51,6 +51,13 @@ usage() {
 	echo "	console VM		Run 'virsh console' for the VM"
 	echo "	build VM [PATH] BRANCH	Push the BRANCH from repository in the current directory, or speciied PATH to the VM."
 	echo "				Build and install the kernel, reboot and connect to the vm"
+	echo "	results			Print table with all xfstests results available"
+	echo "	results show DIR...	Print table with all specified xfstests results"
+	echo "	results compare BASE DIR..."
+	echo "				Print table comparing specified xfstests results to the BASE"
+	echo "	results rm DIR...	Remove all specified xfstests results"
+	echo "	results rmall		Remoe all available xfstests results"
+	echo "	results cleanup		Attempt to remove all missing, or incomplete results"
 }
 
 error() {
@@ -82,6 +89,7 @@ check_requirements() {
 	require_tool scp
 	require_tool wget
 	require_tool multitail
+	require_tool comm
 
 	# Does LVM_VG exist?
 	sudo vgs --noheadings -o vg_name | grep -w $LVM_VG >/dev/null 2>&1|| \
@@ -838,6 +846,187 @@ update_vm() {
 	done
 }
 
+get_resdir() {
+	[ -z "$1" ] && return 1
+
+	local resdir=""
+
+	if [ -d "$1" ]; then
+		resdir=$1
+	elif [ -d "${RESULTS_DIR}/xfstests/$1" ]; then
+		resdir=${RESULTS_DIR}/xfstests/$1
+	else
+		return 1
+	fi
+
+	if [ -z "$(ls -A $resdir)" ]; then
+		return 1
+	fi
+
+	echo $resdir
+}
+
+distill_results() {
+	local dir=$1
+	local log=${dir}/check.log
+
+	[ -s "$log" ] || return 1
+
+#	if [ ! -s ${dir}/ran ]; then
+	grep '^Ran: ' $log | tr ' ' '\n' | tail -n+2 | sort > $dir/ran
+	grep '^Not run: ' $log | tr ' ' '\n' | tail -n+2 | sort > $dir/notrun
+	grep '^Failures: ' $log | tr ' ' '\n' | tail -n+2 | sort > $dir/failures
+#	fi
+}
+
+show_results() {
+	[ $# -lt 1 ] && error "No results to show"
+	local tmp=$(mktemp)
+	for i in $@; do
+		resdir=$(get_resdir $i) || continue
+		ls $resdir >> $tmp
+	done
+
+	sections=$(sort $tmp | uniq)
+
+	for section in $sections; do
+
+			l=$(echo $section | wc -c)
+			printf "%$((30+l/2))s\n" "$section"
+			printf "%0.s-" {1..60}
+			printf "\n"
+
+	for i in $@; do
+
+		resdir=$(get_resdir $i) || continue
+		[ -d "${resdir}/${section}" ] || continue
+
+
+			last=$(ls ${resdir}/${section} | sort -n | tail -n1)
+			dir=${resdir}/${section}/${last}
+
+			distill_results $dir || continue
+
+			format="%-35.33s| %-10.8s| %s\n"
+
+			out=$(wc -l $dir/ran | cut -d' ' -f1)
+			printf "$format" $i "Ran:" $out
+
+			out=$(wc -l $dir/notrun | cut -d' ' -f1)
+			printf "$format" $i "Not run:" $out
+
+			out=$(wc -l $dir/failures | cut -d' ' -f1)
+			printf "$format" $i "Fails:" $out
+
+			out=$(cat $dir/failures | tr '\n' ' ')
+			[ -n "$out" ] && printf "$format" "$i" "Failed:" "$out"
+
+			printf "%0.s-" {1..60}
+			printf "\n"
+		done
+	done
+}
+
+compare_results() {
+	[ $# -lt 2 ] && error "To compare results specify at leas two arguments"
+
+	base=$(get_resdir $1) || error "Base result \"$1\" does not exist"
+	sections=$(ls $base)
+	shift
+
+
+	for section in $sections; do
+		l=$(echo $section | wc -c)
+		printf "%$((30+l/2))s\n" "$section"
+		printf "%0.s-" {1..60}
+		printf "\n"
+
+		for i in $@; do
+
+			resdir=$(get_resdir $i) || continue
+
+			[ -d "${resdir}/${section}" ] || continue
+
+			last=$(ls ${resdir}/${section} | sort -n | tail -n1)
+			dir=${resdir}/${section}/${last}
+
+			distill_results $dir || continue
+
+			lastbase=$(ls ${base}/${section} | sort -n | tail -n1)
+			basedir=${base}/${section}/${lastbase}
+
+			distill_results $basedir || continue
+
+			format="%-35.33s| %-10.8s| %s\n"
+
+			out=$(wc -l $dir/ran | cut -d' ' -f1)
+			printf "$format" $i "Ran:" $out
+
+			out=$(comm -23 ${basedir}/failures $dir/failures | tr '\n' ' ')
+			[ -n "$out" ] && printf "$format" "$i" "Fixes:" "$out"
+
+			out=$(comm -13 ${basedir}/failures $dir/failures | tr '\n' ' ')
+			[ -n "$out" ] && printf "$format" "$i" "Breaks:" "$out"
+
+			out=$(cat $dir/failures | tr '\n' ' ')
+			[ -n "$out" ] && printf "$format" "$i" "Fails:" "$out"
+
+			printf "%0.s-" {1..60}
+			printf "\n"
+		done
+	done
+}
+
+remove_results() {
+	[ $# - lt 1 ] && error "Nothing to remove"
+	for i in $@; do
+		resdir=${RESULTS_DIR}/xfstests/$i
+		[ -d "$resdir" ] || continue
+		echo "Removing results for \"$i\""
+		rm -rf $resdir
+	done
+}
+
+cleanup_results() {
+	echo "[+] Cleaning up results directory"
+
+	# Delete all empty directories
+	find ${RESULTS_DIR}/xfstests -empty -type d -delete
+
+	for i in $@; do
+		resdir=${RESULTS_DIR}/xfstests/$i
+		[ -d "$resdir" ] || continue
+
+		for section in $(ls $resdir); do
+			for run in $(ls ${resdir}/${section}); do
+
+				log=${resdir}/${section}/${run}/check.log
+				[ -s "$log" ] && continue
+
+				echo "Remove broken run \"${resdir}/${section}/${run}\""
+				rm -rf ${resdir}/${section}/${run}
+			done
+		done
+	done
+
+	# Delete all empty directories
+	find ${RESULTS_DIR}/xfstests -empty -type d -delete
+}
+
+manage_results() {
+	cmd=$1
+	shift
+
+	case "$cmd" in
+		show)		show_results $@;;
+		compare)	compare_results $@;;
+		rm)		remove_results $@;;
+		rmall)		remove_results $(ls ${RESULTS_DIR}/xfstests);;
+		cleanup)	cleanup_results;;
+		*)		show_results $(ls ${RESULTS_DIR}/xfstests) ;;
+	esac
+}
+
 ###############################################################################
 # Start of the script
 ###############################################################################
@@ -886,6 +1075,8 @@ case "$COMMAND" in
 	build)
 				push_build_kernel $@
 				ssh_to_vm $VM
+				;;
+	results)		manage_results $@
 				;;
 	help)
 				usage
