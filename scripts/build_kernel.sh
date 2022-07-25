@@ -6,7 +6,8 @@ BRANCH=$1
 cleanup() {
 	# Just in case we want to push to the same branch again
 	cd $KERNEL_DIR
-	rm -f .localversion
+	git checkout master
+	rm -f localversion
 }
 
 trap cleanup EXIT
@@ -28,9 +29,7 @@ fi
 make olddefconfig
 make localmodconfig 0> /dev/null
 make -j32 && make modules_install && make install
-ret=$?
-
-[ $ret -ne 0 ] && exit 1
+[ $? -ne 0 ] && exit 1
 
 release=$(make -s kernelrelease)
 grubby --set-default vmlinuz-$release

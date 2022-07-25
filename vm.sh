@@ -778,11 +778,10 @@ push_build_kernel() {
 	wait_vm_online $VM
 	ip=${VM_IP[$VM]}
 
-	REMOTE_BRANCH=${LOCAL_BRANCH}_$RANDOM
 	echo "[+] Push the branch to vm repo"
-	git push ssh://root@$ip:/root/linux $LOCAL_BRANCH:$REMOTE_BRANCH
+	git push --force ssh://root@$ip:/root/linux $LOCAL_BRANCH:$LOCAL_BRANCH
 
-	run_script_in_vm $VM build_kernel $REMOTE_BRANCH || error "Build failed"
+	run_script_in_vm $VM build_kernel $LOCAL_BRANCH || error "Build failed"
 
 	reboot_vm $VM
 }
