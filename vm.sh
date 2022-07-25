@@ -41,12 +41,16 @@ usage() {
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
 	echo "	update VMs		Update all specified VMs"
-	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [OPTIONS]"
+	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [-s SECTION ] [ -b BASELINE ] [OPTIONS]"
 	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optionally install RPM packages provided either as a file, link or identified by BREW_ID."
 	echo "				Currently supported tests: $SUPPORTED_TESTS"
-	echo "	testbuild VM [PATH] BRANCH [OPTIONS]"
+	echo "				Additionally SECTION to test can be specified (defaults to ext4), or all for all sections"
+	echo "				If this is a baseline test, use -b"
+	echo "	testbuild VM [PATH] BRANCH [ -s SECTION ] [ -b BASELINE ] [OPTIONS]"
 	echo "				Push the BRANCH from repository in the current directory, or specified PATH to the VM."
 	echo "				Build and install the kernel and run xfstests with specified OPTIONS"
+	echo "				Additionally SECTION to test can be specified (defaults to ext4), or all for all sections"
+	echo "				If this is a baseline test, use -b"
 	echo "	run VM SCRIPT		Run SCRIPT in VM"
 	echo "	console VM		Run 'virsh console' for the VM"
 	echo "	build VM [PATH] BRANCH	Push the BRANCH from repository in the current directory, or speciied PATH to the VM."
@@ -58,6 +62,7 @@ usage() {
 	echo "	results rm DIR...	Remove all specified xfstests results"
 	echo "	results rmall		Remoe all available xfstests results"
 	echo "	results cleanup		Attempt to remove all missing, or incomplete results"
+	echo "	results baseline OS	Show baseline results for specified OS"
 }
 
 error() {
@@ -483,20 +488,23 @@ new_vm() {
 
 run_xfstests() {
 	local ip
+	local baseline
 	VM=$1
 	shift 1
 
 	# Get the section options for the xfstests
 	local sections=
-	while getopts ":s:" arg; do
+	while getopts ":s:b:" arg; do
 	case ${arg} in
 		s)
 			case $OPTARG in
 				all)	sections="ext4 ext4_1024 ext3 ext2"
-					break
 					;;
 				*)	sections="$sections $OPTARG";;
 			esac
+			;;
+		b)
+			baseline=$(get_baseline_filename $OPTARG) || error "No such baseline $OPTARG"
 			;;
 		?)
 			# sections must be specified first, stop upon
@@ -529,6 +537,9 @@ run_xfstests() {
 		ip=${VM_IP[$VM]}
 		outdir=$RESULTS_DIR/xfstests/$kernel/$section/$datetime
 		mkdir -p $outdir
+
+		# Create file signifying it is a baseline result
+		[ -n "$baseline" ] && touch $RESULTS_DIR/xfstests/$kernel/$baseline
 
 		scp -q -r root@$ip:/root/output/* $outdir
 		echo "[+] Section $section test is DONE. Results stored in $outdir"
@@ -577,6 +588,9 @@ run_xfstests() {
 		ip=${VM_IP[$NEW_VM]}
 		outdir=$RESULTS_DIR/xfstests/$kernel/$s/$datetime
 		mkdir -p $outdir
+
+		# Create file signifying it is a baseline result
+		[ -n "$baseline" ] && touch $RESULTS_DIR/xfstests/$kernel/$baseline
 
 		scp -q -r root@$ip:/root/output/* $outdir
 		echo "[+] Section $s test is DONE. Results stored in $outdir"
@@ -846,6 +860,35 @@ update_vm() {
 	done
 }
 
+get_baseline_filename() {
+	case $1 in
+		fedora35)	baseline=FEDORA35_BASELINE_x86_64;;
+		fedora36)	baseline=FEDORA36_BASELINE_x86_64;;
+		rhel8)		baseline=RHEL8_BASELINE_x86_64;;
+		rhel9)		baseline=RHEL9_BASELINE_x86_64;;
+		upstream)	baseline=UPSTREAM_BASELINE_x86_64;;
+		*)		return 1;;
+	esac
+	echo $baseline
+}
+
+get_latest_baseline() {
+	[ -z "$1" ] && return 1
+	local resdir
+
+	basefile=$(get_baseline_filename $1) || return 1
+
+	resdir=$(
+	for dir in `find ${RESULTS_DIR}/xfstests/ -type f -name $basefile -printf "%h\n"`; do
+		basename $dir
+	done | sort -t '.' -k1n -k2n -k3n | tail -n1
+	)
+
+	[ -n "$resdir" ] || return 1
+
+	echo ${RESULTS_DIR}/xfstests/$resdir
+}
+
 get_resdir() {
 	[ -z "$1" ] && return 1
 
@@ -856,7 +899,7 @@ get_resdir() {
 	elif [ -d "${RESULTS_DIR}/xfstests/$1" ]; then
 		resdir=${RESULTS_DIR}/xfstests/$1
 	else
-		return 1
+		resdir=$(get_latest_baseline $1) || return 1
 	fi
 
 	if [ -z "$(ls -A $resdir)" ]; then
@@ -879,28 +922,37 @@ distill_results() {
 #	fi
 }
 
+print_header() {
+		l=$(echo $1 | wc -c)
+		printf "%$((30+l/2))s\n" "$1"
+		printf "%0.s-" {1..60}
+		printf "\n"
+}
+
 show_results() {
 	[ $# -lt 1 ] && error "No results to show"
 	local tmp=$(mktemp)
+
 	for i in $@; do
 		resdir=$(get_resdir $i) || continue
-		ls $resdir >> $tmp
+		#ls $resdir >> $tmp
+		find $resdir -maxdepth 1 -mindepth 1 -type d -printf "%f\n" >> $tmp
 	done
 
 	sections=$(sort $tmp | uniq)
 
+	[ -z "$sections" ] && return
+
+	printf "%0.s-" {1..60}
+	printf "\n"
+
 	for section in $sections; do
+			print_header $section
 
-			l=$(echo $section | wc -c)
-			printf "%$((30+l/2))s\n" "$section"
-			printf "%0.s-" {1..60}
-			printf "\n"
+		for i in $@; do
 
-	for i in $@; do
-
-		resdir=$(get_resdir $i) || continue
-		[ -d "${resdir}/${section}" ] || continue
-
+			resdir=$(get_resdir $i) || continue
+			[ -d "${resdir}/${section}" ] || continue
 
 			last=$(ls ${resdir}/${section} | sort -n | tail -n1)
 			dir=${resdir}/${section}/${last}
@@ -929,17 +981,18 @@ show_results() {
 
 compare_results() {
 	[ $# -lt 2 ] && error "To compare results specify at leas two arguments"
+	local header=0
 
 	base=$(get_resdir $1) || error "Base result \"$1\" does not exist"
-	sections=$(ls $base)
+	sections=$(find $base -maxdepth 1 -mindepth 1 -type d -printf "%f\n")
 	shift
 
+	[ -z "$sections" ] && return
+
+	printf "%0.s-" {1..60}
+	printf "\n"
 
 	for section in $sections; do
-		l=$(echo $section | wc -c)
-		printf "%$((30+l/2))s\n" "$section"
-		printf "%0.s-" {1..60}
-		printf "\n"
 
 		for i in $@; do
 
@@ -956,6 +1009,8 @@ compare_results() {
 			basedir=${base}/${section}/${lastbase}
 
 			distill_results $basedir || continue
+
+			[ $header -eq 0 ] && print_header $section
 
 			format="%-35.33s| %-10.8s| %s\n"
 
@@ -1023,6 +1078,7 @@ manage_results() {
 		rm)		remove_results $@;;
 		rmall)		remove_results $(ls ${RESULTS_DIR}/xfstests);;
 		cleanup)	cleanup_results;;
+		baseline)	get_latest_baseline $1;;
 		*)		show_results $(ls ${RESULTS_DIR}/xfstests) ;;
 	esac
 }
@@ -1076,8 +1132,7 @@ case "$COMMAND" in
 				push_build_kernel $@
 				ssh_to_vm $VM
 				;;
-	results)		manage_results $@
-				;;
+	results)		manage_results $@;;
 	help)
 				usage
 				exit 0
