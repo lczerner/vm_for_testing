@@ -595,6 +595,9 @@ run_xfstests() {
 		scp -q -r root@$ip:/root/output/* $outdir
 		echo "[+] Section $s test is DONE. Results stored in $outdir"
 
+		# power off the system
+		ssh root@$ip "poweroff" > /dev/null 2>&1
+
 		) >> $log 2>&1 &
 
 		arrTests[$!]="$s $NEW_VM"
