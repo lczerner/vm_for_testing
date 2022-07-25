@@ -398,8 +398,12 @@ stop_vm() {
 			shift
 			continue
 		fi
-		echo "[+] Stopping VM \"$1\""
-		sudo virsh destroy $1 > /dev/null 2>&1
+		echo "[+] Shutting down VM \"$1\""
+		sudo virsh shutdown $1
+		while check_vm_active $1; do
+			sleep 1
+		done
+		[ $? -ne 0 ] && sudo virsh destroy $1 > /dev/null 2>&1
 		unset VM_IP[$1]
 		unset VM_ONLINE[$1]
 		shift
