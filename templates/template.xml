@@ -1,7 +1,6 @@
 <domain type='kvm'>
   <name>MY_NEW_VM_NAME</name>
-  <memory unit='KiB'>4194304</memory>
-  <currentMemory unit='KiB'>4194304</currentMemory>
+  <memory unit='KiB'>8388608</memory>
   <vcpu placement='static'>32</vcpu>
   <os>
     <type arch='x86_64' machine='pc-q35-6.1'>hvm</type>
