@@ -302,7 +302,7 @@ install_rpms() {
 	check_vm_active $1 || error "\"$1\" is not running!"
 
 	if [ -n "$INSTALL_RPMS" ]; then
-		REMOTE_DIR="/root/rpms_$RANDOM"
+		REMOTE_DIR="/root/rpms_$RANDOM/"
 
 		copy_to_vm $1 $INSTALL_RPMS $REMOTE_DIR
 
