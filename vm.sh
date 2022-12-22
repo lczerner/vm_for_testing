@@ -36,13 +36,15 @@ usage() {
 	echo "				Currently supported OS: $BASE_VMS"
 	echo "	delete | rm VMs		Remove all spefied VMs."
 	echo "	clone [ -r RPM ] [ -s BREW_ID ] VM [NAME]"
-	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by BREW_ID."
+	echo "				Clone a VM. Optionally install RPM packages provided either as a file, link, or identified by"
+	echo "				BREW_ID."
 	echo "				If NAME is given, then the new VM name will be in format VM_clone_NAME"
 	echo "	ssh VM			ssh to the VM"
 	echo "	ip VM			Get an IP address for the VM"
 	echo "	update VMs		Update all specified VMs"
 	echo "	test [ -r RPM ] [ -s BREW_ID ] VM TEST [-s SECTION ] [ -b BASELINE ] [OPTIONS]"
-	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optionally install RPM packages provided either as a file, link or identified by BREW_ID."
+	echo "				Run TEST on VM with optional OPTIONS passed to the test itself. Optionally install RPM packages"
+	echo "				provided either as a file, link or identified by BREW_ID."
 	echo "				Currently supported tests: $SUPPORTED_TESTS"
 	echo "				Additionally SECTION to test can be specified (defaults to ext4), or all for all sections"
 	echo "				If this is a baseline test, use -b"
@@ -817,6 +819,7 @@ command_clone_vm() {
 
 	install_rpms $NEW_VM
 
+	copy_to_vm $NEW_VM $XFSTESTS_CONFIG /root/xfstests/configs/${1}.config
 	ssh_to_vm $NEW_VM
 }
 
